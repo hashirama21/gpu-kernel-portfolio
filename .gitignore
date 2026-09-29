@@ -1,0 +1,21 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE
+.idea/
+.vscode/
+
+# Python (PyTorch extensions)
+__pycache__/
+*.so
+*.egg-info/
+dist/
+*.pyc

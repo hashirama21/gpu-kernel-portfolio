@@ -1,0 +1,83 @@
+cmake_minimum_required(VERSION 3.18)
+project(gpu_kernel_portfolio_part2 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Projects 10, 11, and 13 are PyTorch C++ extensions (torch::Tensor, pybind11, TORCH_EXTENSION_NAME) and
+# are NOT part of this CMake build: PyTorch extensions are conventionally built with
+# `torch.utils.cpp_extension` via each project's own setup.py (`pip install .`), which knows how to find
+# LibTorch and pybind11 the way a plain CMakeLists.txt here would not without requiring the person to
+# already have a Python + PyTorch environment just to configure this file. See the top-level README for
+# exactly how to build those three.
+add_library(portfolio_common INTERFACE)
+target_include_directories(portfolio_common INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/common/include)
+target_compile_options(portfolio_common INTERFACE -Wall -Wextra -Wpedantic)
+
+enable_testing()
+
+# ---------------------------------------------------------------------------
+# CPU-side algorithm simulations (07, 08, 09, 12, 13): always built, no GPU or CUDA toolkit needed.
+# ---------------------------------------------------------------------------
+add_executable(07_softmax_sim 07_softmax/tests/test_softmax_cpu_sim.cpp)
+target_link_libraries(07_softmax_sim PRIVATE portfolio_common)
+add_test(NAME 07_softmax_sim COMMAND 07_softmax_sim)
+
+add_executable(08_norm_sim 08_norm/tests/test_norm_cpu_sim.cpp)
+target_link_libraries(08_norm_sim PRIVATE portfolio_common)
+add_test(NAME 08_norm_sim COMMAND 08_norm_sim)
+
+add_executable(09_gemm_sim 09_gemm/tests/test_gemm_cpu_sim.cpp)
+target_link_libraries(09_gemm_sim PRIVATE portfolio_common)
+add_test(NAME 09_gemm_sim COMMAND 09_gemm_sim)
+
+add_executable(11_silu_math 11_pytorch_silu_autograd/tests/test_silu_math.cpp)
+target_link_libraries(11_silu_math PRIVATE portfolio_common)
+add_test(NAME 11_silu_math COMMAND 11_silu_math)
+
+add_executable(12_wmma_padding_sim 12_wmma_tensorcores/tests/test_wmma_padding_sim.cpp)
+target_link_libraries(12_wmma_padding_sim PRIVATE portfolio_common)
+add_test(NAME 12_wmma_padding_sim COMMAND 12_wmma_padding_sim)
+
+add_executable(13_flash_attention_sim 13_flash_attention/tests/test_flash_attention_cpu_sim.cpp)
+target_link_libraries(13_flash_attention_sim PRIVATE portfolio_common)
+add_test(NAME 13_flash_attention_sim COMMAND 13_flash_attention_sim)
+
+# ---------------------------------------------------------------------------
+# Raw-CUDA GPU targets (07, 08, 09, 12: no PyTorch involved, plain nvcc): only if a CUDA compiler is
+# found. Building this batch without a GPU (as in the sandbox it was written in) still builds and tests
+# every simulation above; it simply skips the .cu targets below instead of failing the whole build.
+# ---------------------------------------------------------------------------
+include(CheckLanguage)
+check_language(CUDA)
+if(CMAKE_CUDA_COMPILER)
+  enable_language(CUDA)
+  set(CMAKE_CUDA_STANDARD 17)
+  set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+  if(NOT CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89)
+  endif()
+
+  add_executable(07_softmax_gpu 07_softmax/src/main.cu)
+  target_include_directories(07_softmax_gpu PRIVATE 07_softmax/include common/include)
+
+  add_executable(08_norm_gpu 08_norm/src/main.cu)
+  target_include_directories(08_norm_gpu PRIVATE 08_norm/include common/include)
+
+  add_executable(09_gemm_gpu 09_gemm/src/main.cu)
+  target_include_directories(09_gemm_gpu PRIVATE 09_gemm/include common/include)
+
+  add_executable(12_wmma_gpu 12_wmma_tensorcores/src/main.cu)
+  target_include_directories(12_wmma_gpu PRIVATE 12_wmma_tensorcores/include common/include)
+
+  message(STATUS "CUDA compiler found (${CMAKE_CUDA_COMPILER}): building GPU targets "
+                  "07_softmax_gpu, 08_norm_gpu, 09_gemm_gpu, 12_wmma_gpu. "
+                  "(10, 11, 13 are PyTorch extensions: build with their own setup.py, see README.md)")
+else()
+  message(STATUS "No CUDA compiler found: skipping GPU targets. CPU-side algorithm simulations (which "
+                  "cover every project's kernel logic without a GPU) are still built and tested. See README.md.")
+endif()
